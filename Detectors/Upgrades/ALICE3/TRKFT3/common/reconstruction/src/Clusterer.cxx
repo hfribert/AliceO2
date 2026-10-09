@@ -82,7 +82,7 @@ void Clusterer<DetID>::process(gsl::span<const Digit> digits,
     mThread = std::make_unique<ClustererThread>(this);
   }
 
-  auto* geom = o2::trk::GeometryTGeo::Instance();
+  auto* geom = GeometryTGeo::Instance();
 
   for (size_t iROF = 0; iROF < digitROFs.size(); ++iROF) {
     const auto& inROF = digitROFs[iROF];

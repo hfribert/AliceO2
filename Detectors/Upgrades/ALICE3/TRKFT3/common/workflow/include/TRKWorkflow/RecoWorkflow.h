@@ -22,7 +22,8 @@ namespace reco_workflow
 o2::framework::WorkflowSpec getWorkflow(bool useMC,
                                         bool upstreamDigits = false,
                                         bool upstreamClusters = false,
-                                        bool disableRootOutput = false);
+                                        bool disableRootOutput = false,
+                                        bool enableFT3 = true);
 }
 
 } // namespace o2::trk

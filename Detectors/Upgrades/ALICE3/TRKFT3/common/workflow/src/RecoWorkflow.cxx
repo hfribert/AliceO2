@@ -23,19 +23,29 @@ namespace o2::trk::reco_workflow
 framework::WorkflowSpec getWorkflow(bool useMC,
                                     bool upstreamDigits,
                                     bool upstreamClusters,
-                                    bool disableRootOutput)
+                                    bool disableRootOutput,
+                                    bool enableFT3)
 {
   framework::WorkflowSpec specs;
 
   if (!(upstreamDigits || upstreamClusters)) {
     specs.emplace_back(o2::trk::getTRKDigitReaderSpec(useMC, false, "trkdigits.root"));
+    if (enableFT3) {
+      specs.emplace_back(o2::trk::getFT3DigitReaderSpec(useMC, false, "ft3digits.root"));
+    }
   }
   if (!upstreamClusters) {
-    specs.emplace_back(o2::trk::getClustererSpec(useMC));
+    specs.emplace_back(o2::trk::getTRKClustererSpec(useMC));
+    if (enableFT3) {
+      specs.emplace_back(o2::trk::getFT3ClustererSpec(useMC));
+    }
   }
 
   if (!disableRootOutput) {
-    specs.emplace_back(o2::trk::getClusterWriterSpec(useMC));
+    specs.emplace_back(o2::trk::getTRKClusterWriterSpec(useMC));
+    if (enableFT3) {
+      specs.emplace_back(o2::trk::getFT3ClusterWriterSpec(useMC));
+    }
   }
 
   return specs;

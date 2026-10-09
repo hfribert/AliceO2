@@ -15,23 +15,33 @@
 #include "DataFormatsTRKFT3/ROFRecord.h"
 #include "Framework/ConfigParamRegistry.h"
 #include "Framework/Logger.h"
+#include "Headers/DataHeader.h"
 #include "SimulationDataFormat/ConstMCTruthContainer.h"
 
+#include <algorithm>
+#include <cctype>
 #include <format>
 
 namespace o2::trk
 {
 
-void ClustererDPL::init(o2::framework::InitContext& ic)
+template <int DetID>
+void ClustererDPL<DetID>::init(o2::framework::InitContext& ic)
 {
   mNThreads = std::max(1, ic.options().get<int>("nthreads"));
 #ifdef O2_WITH_ACTS
-  mUseACTS = ic.options().get<bool>("useACTS");
+  if constexpr (DetID == o2::detectors::DetID::TRK) {
+    mUseACTS = ic.options().get<bool>("useACTS");
+  }
 #endif
 }
 
-void ClustererDPL::run(o2::framework::ProcessingContext& pc)
+template <int DetID>
+void ClustererDPL<DetID>::run(o2::framework::ProcessingContext& pc)
 {
+  static constexpr o2::header::DataOrigin Origin{DetID == o2::detectors::DetID::TRK ? o2::header::gDataOriginTRK : o2::header::gDataOriginFT3};
+  const auto detName = Origin.as<std::string>();
+
   o2::base::GeometryManager::loadGeometry(); // default prefix -> o2sim_geometry[-aligned].root
 
   uint64_t totalClusters = 0;
@@ -45,7 +55,7 @@ void ClustererDPL::run(o2::framework::ProcessingContext& pc)
     }
     o2::dataformats::ConstMCTruthContainerView<o2::MCCompLabel> labels(labelbuffer);
 
-    std::vector<o2::trkft3::TRKCluster> clusters;
+    std::vector<o2::trkft3::Cluster<DetID>> clusters;
     std::vector<unsigned char> patterns;
     std::vector<o2::trkft3::ROFRecord> clusterROFs;
     std::unique_ptr<o2::dataformats::MCTruthContainer<o2::MCCompLabel>> clusterLabels;
@@ -54,19 +64,30 @@ void ClustererDPL::run(o2::framework::ProcessingContext& pc)
     }
 
 #ifdef O2_WITH_ACTS
-    if (mUseACTS) {
-      LOG(info) << "Running TRKClusterer with ACTS on layer " << iLayer;
-      mClustererACTS.process(digits,
-                             rofs,
-                             clusters,
-                             patterns,
-                             clusterROFs,
-                             mUseMC ? &labels : nullptr,
-                             clusterLabels.get());
+    if constexpr (DetID == o2::detectors::DetID::TRK) {
+      if (mUseACTS) {
+        LOG(info) << detName << "Clusterer running with ACTS on layer " << iLayer;
+        mClustererACTS.process(digits,
+                               rofs,
+                               clusters,
+                               patterns,
+                               clusterROFs,
+                               mUseMC ? &labels : nullptr,
+                               clusterLabels.get());
+      } else {
+        LOG(info) << detName << "Clusterer running on layer " << iLayer;
+        mClusterer.process(digits,
+                           rofs,
+                           clusters,
+                           patterns,
+                           clusterROFs,
+                           mUseMC ? &labels : nullptr,
+                           clusterLabels.get());
+      }
     } else
 #endif
     {
-      LOG(info) << "Running TRKClusterer on layer " << iLayer;
+      LOG(info) << detName << "Clusterer running on layer " << iLayer;
       mClusterer.process(digits,
                          rofs,
                          clusters,
@@ -77,52 +98,77 @@ void ClustererDPL::run(o2::framework::ProcessingContext& pc)
     }
 
     const auto subspec = static_cast<o2::framework::DataAllocator::SubSpecificationType>(iLayer);
-    pc.outputs().snapshot(o2::framework::Output{"TRK", "COMPCLUSTERS", subspec}, clusters);
-    pc.outputs().snapshot(o2::framework::Output{"TRK", "PATTERNS", subspec}, patterns);
-    pc.outputs().snapshot(o2::framework::Output{"TRK", "CLUSTERSROF", subspec}, clusterROFs);
+    pc.outputs().snapshot(o2::framework::Output{Origin, "COMPCLUSTERS", subspec}, clusters);
+    pc.outputs().snapshot(o2::framework::Output{Origin, "PATTERNS", subspec}, patterns);
+    pc.outputs().snapshot(o2::framework::Output{Origin, "CLUSTERSROF", subspec}, clusterROFs);
     if (mUseMC) {
-      pc.outputs().snapshot(o2::framework::Output{"TRK", "CLUSTERSMCTR", subspec}, *clusterLabels);
+      pc.outputs().snapshot(o2::framework::Output{Origin, "CLUSTERSMCTR", subspec}, *clusterLabels);
     }
     totalClusters += clusters.size();
-    LOGP(info, "TRKClusterer layer {} pushed {} clusters in {} ROFs", iLayer, clusters.size(), clusterROFs.size());
+    LOGP(info, "{}Clusterer layer {} pushed {} clusters in {} ROFs", detName, iLayer, clusters.size(), clusterROFs.size());
   }
 
-  LOGP(info, "TRKClusterer produced {} clusters", totalClusters);
+  LOGP(info, "{}Clusterer produced {} clusters", detName, totalClusters);
 }
 
-o2::framework::DataProcessorSpec getClustererSpec(bool useMC)
+template <int DetID>
+o2::framework::DataProcessorSpec getClustererSpecT(bool useMC)
 {
-  static constexpr int nLayers = o2::trk::AlmiraParam::kNLayers;
+  static_assert(DetID == o2::detectors::DetID::TRK || DetID == o2::detectors::DetID::FT3, "only TRK and FT3 clusterers are supported");
+  static constexpr o2::header::DataOrigin Origin{DetID == o2::detectors::DetID::TRK ? o2::header::gDataOriginTRK : o2::header::gDataOriginFT3};
+  static constexpr int nLayers = DetID == o2::detectors::DetID::TRK ? o2::trk::AlmiraParam::kNLayers : o2::trk::constants::MLOTDisks::nLayers;
+  const auto detName = Origin.as<std::string>();
+  auto detNameLC = detName;
+  std::transform(detNameLC.begin(), detNameLC.end(), detNameLC.begin(), [](unsigned char c) { return std::tolower(c); });
+
   std::vector<o2::framework::InputSpec> inputs;
   for (int iLayer = 0; iLayer < nLayers; ++iLayer) {
-    inputs.emplace_back(std::format("digits_{}", iLayer), "TRK", "DIGITS", iLayer, o2::framework::Lifetime::Timeframe);
-    inputs.emplace_back(std::format("ROframes_{}", iLayer), "TRK", "DIGITSROF", iLayer, o2::framework::Lifetime::Timeframe);
+    inputs.emplace_back(std::format("digits_{}", iLayer), Origin, "DIGITS", iLayer, o2::framework::Lifetime::Timeframe);
+    inputs.emplace_back(std::format("ROframes_{}", iLayer), Origin, "DIGITSROF", iLayer, o2::framework::Lifetime::Timeframe);
     if (useMC) {
-      inputs.emplace_back(std::format("labels_{}", iLayer), "TRK", "DIGITSMCTR", iLayer, o2::framework::Lifetime::Timeframe);
+      inputs.emplace_back(std::format("labels_{}", iLayer), Origin, "DIGITSMCTR", iLayer, o2::framework::Lifetime::Timeframe);
     }
   }
 
   std::vector<o2::framework::OutputSpec> outputs;
   for (int iLayer = 0; iLayer < nLayers; ++iLayer) {
-    outputs.emplace_back("TRK", "COMPCLUSTERS", iLayer, o2::framework::Lifetime::Timeframe);
-    outputs.emplace_back("TRK", "PATTERNS", iLayer, o2::framework::Lifetime::Timeframe);
-    outputs.emplace_back("TRK", "CLUSTERSROF", iLayer, o2::framework::Lifetime::Timeframe);
+    outputs.emplace_back(Origin, "COMPCLUSTERS", iLayer, o2::framework::Lifetime::Timeframe);
+    outputs.emplace_back(Origin, "PATTERNS", iLayer, o2::framework::Lifetime::Timeframe);
+    outputs.emplace_back(Origin, "CLUSTERSROF", iLayer, o2::framework::Lifetime::Timeframe);
     if (useMC) {
-      outputs.emplace_back("TRK", "CLUSTERSMCTR", iLayer, o2::framework::Lifetime::Timeframe);
+      outputs.emplace_back(Origin, "CLUSTERSMCTR", iLayer, o2::framework::Lifetime::Timeframe);
     }
   }
 
   return o2::framework::DataProcessorSpec{
-    "trk-clusterer",
+    std::format("{}-clusterer", detNameLC),
     inputs,
     outputs,
-    o2::framework::AlgorithmSpec{o2::framework::adaptFromTask<o2::trk::ClustererDPL>(useMC)},
+    o2::framework::AlgorithmSpec{o2::framework::adaptFromTask<o2::trk::ClustererDPL<DetID>>(useMC)},
     o2::framework::Options{{"nthreads", o2::framework::VariantType::Int, 1, {"Number of clustering threads"}}
 #ifdef O2_WITH_ACTS
                            ,
-                           {"useACTS", o2::framework::VariantType::Bool, false, {"Use ACTS for clustering"}}
+                           {"useACTS", o2::framework::VariantType::Bool, false, {"Use ACTS for clustering (TRK only)"}}
 #endif
     }};
 }
+
+o2::framework::DataProcessorSpec getTRKClustererSpec(bool useMC)
+{
+  return getClustererSpecT<o2::detectors::DetID::TRK>(useMC);
+}
+
+o2::framework::DataProcessorSpec getFT3ClustererSpec(bool useMC)
+{
+  return getClustererSpecT<o2::detectors::DetID::FT3>(useMC);
+}
+
+o2::framework::DataProcessorSpec getClustererSpec(bool useMC)
+{
+  return getTRKClustererSpec(useMC);
+}
+
+template class ClustererDPL<o2::detectors::DetID::TRK>;
+template class ClustererDPL<o2::detectors::DetID::FT3>;
 
 } // namespace o2::trk

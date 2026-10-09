@@ -23,24 +23,29 @@
 namespace o2::trk
 {
 
+template <int DetID>
 class ClustererDPL : public o2::framework::Task
 {
+  static_assert(DetID == o2::detectors::DetID::TRK || DetID == o2::detectors::DetID::FT3, "only TRK and FT3 clusterers are supported");
+
  public:
   ClustererDPL(bool useMC) : mUseMC(useMC) {}
   void init(o2::framework::InitContext& ic) final;
   void run(o2::framework::ProcessingContext& pc) final;
 
  private:
-  static constexpr int mLayers = o2::trk::AlmiraParam::kNLayers;
+  static constexpr int mLayers = DetID == o2::detectors::DetID::TRK ? o2::trk::AlmiraParam::kNLayers : o2::trk::constants::MLOTDisks::nLayers;
   bool mUseMC = true;
   int mNThreads = 1;
-  o2::trk::TRKClusterer mClusterer;
+  o2::trk::Clusterer<DetID> mClusterer;
 #ifdef O2_WITH_ACTS
   bool mUseACTS = false;
   o2::trk::ClustererACTS mClustererACTS;
 #endif
 };
 
+o2::framework::DataProcessorSpec getTRKClustererSpec(bool useMC);
+o2::framework::DataProcessorSpec getFT3ClustererSpec(bool useMC);
 o2::framework::DataProcessorSpec getClustererSpec(bool useMC);
 
 } // namespace o2::trk

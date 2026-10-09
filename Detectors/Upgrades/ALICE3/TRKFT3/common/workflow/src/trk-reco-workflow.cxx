@@ -28,7 +28,7 @@ void customize(std::vector<CallbacksPolicy>& policies)
 void customize(std::vector<CompletionPolicy>& policies)
 {
   // ordered policies for the writers
-  policies.push_back(CompletionPolicyHelpers::consumeWhenAllOrdered(".*(?:TRK|trk).*[W,w]riter.*"));
+  policies.push_back(CompletionPolicyHelpers::consumeWhenAllOrdered(".*(?:TRK|trk|FT3|ft3).*[W,w]riter.*"));
 }
 
 void customize(std::vector<ConfigParamSpec>& workflowOptions)
@@ -39,6 +39,7 @@ void customize(std::vector<ConfigParamSpec>& workflowOptions)
     {"clusters-from-upstream", VariantType::Bool, false, {"clusters will be provided from upstream, skip clusterizer"}},
     {"disable-root-output", VariantType::Bool, false, {"do not write output root files"}},
     {"disable-mc", VariantType::Bool, false, {"disable MC propagation even if available"}},
+    {"disable-ft3", VariantType::Bool, false, {"do not read/cluster FT3 forward-disk digits, TRK barrel only"}},
     {"configKeyValues", VariantType::String, "", {"Semicolon separated key=value strings"}}};
   std::swap(workflowOptions, options);
 }
@@ -53,10 +54,11 @@ WorkflowSpec defineDataProcessing(ConfigContext const& configcontext)
   auto extDigits = configcontext.options().get<bool>("digits-from-upstream");
   auto extClusters = configcontext.options().get<bool>("clusters-from-upstream");
   auto disableRootOutput = configcontext.options().get<bool>("disable-root-output");
+  auto enableFT3 = !configcontext.options().get<bool>("disable-ft3");
   o2::conf::ConfigurableParam::updateFromString(configcontext.options().get<std::string>("configKeyValues"));
 
   // write the configuration used for the reco workflow
   o2::conf::ConfigurableParam::writeINI("o2itsrecoflow_configuration.ini");
 
-  return o2::trk::reco_workflow::getWorkflow(useMC, extDigits, extClusters, disableRootOutput);
+  return o2::trk::reco_workflow::getWorkflow(useMC, extDigits, extClusters, disableRootOutput, enableFT3);
 }

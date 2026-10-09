@@ -33,7 +33,10 @@ namespace trk
 
 DigitReader::DigitReader(o2::detectors::DetID id, bool useMC, bool useCalib)
 {
-  assert(id == o2::detectors::DetID::TRK);
+  assert(id == o2::detectors::DetID::TRK || id == o2::detectors::DetID::FT3);
+  if (id == o2::detectors::DetID::FT3) {
+    mLayers = o2::trk::constants::MLOTDisks::nLayers;
+  }
   mDetNameLC = mDetName = id.getName();
   mDigTreeName = "o2sim";
 
@@ -176,6 +179,30 @@ DataProcessorSpec getTRKDigitReaderSpec(bool useMC, bool useCalib, std::string d
     AlgorithmSpec{adaptFromTask<TRKDigitReader>(useMC, useCalib)},
     Options{
       {"trk-digit-infile", VariantType::String, defname, {"Name of the input digit file"}}}};
+}
+
+DataProcessorSpec getFT3DigitReaderSpec(bool useMC, bool useCalib, std::string defname)
+{
+  static constexpr int nLayers = o2::trk::constants::MLOTDisks::nLayers;
+  std::vector<OutputSpec> outputSpec;
+  for (int iLayer = 0; iLayer < nLayers; ++iLayer) {
+    outputSpec.emplace_back("FT3", "DIGITS", iLayer, Lifetime::Timeframe);
+    outputSpec.emplace_back("FT3", "DIGITSROF", iLayer, Lifetime::Timeframe);
+    if (useMC) {
+      outputSpec.emplace_back("FT3", "DIGITSMCTR", iLayer, Lifetime::Timeframe);
+    }
+  }
+  if (useCalib) {
+    outputSpec.emplace_back("FT3", "GBTCALIB", 0, Lifetime::Timeframe);
+  }
+
+  return DataProcessorSpec{
+    "ft3-digit-reader",
+    Inputs{},
+    outputSpec,
+    AlgorithmSpec{adaptFromTask<FT3DigitReader>(useMC, useCalib)},
+    Options{
+      {"ft3-digit-infile", VariantType::String, defname, {"Name of the input digit file"}}}};
 }
 
 } // namespace trk

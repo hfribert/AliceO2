@@ -28,6 +28,8 @@
 #include "SimulationDataFormat/MCCompLabel.h"
 #include "SimulationDataFormat/MCTruthContainer.h"
 #include "TRKBase/Specs.h"
+#include "TRKBase/GeometryTGeo.h"
+#include "FT3Base/GeometryTGeo.h"
 #include "MathUtils/Cartesian.h"
 #include <gsl/span>
 #include <vector>
@@ -35,16 +37,16 @@
 #include <memory>
 #include <cstring>
 #include <utility>
+#include <type_traits>
 
 namespace o2::trk
 {
-
-class GeometryTGeo;
 
 template <int DetID>
 class Clusterer
 {
   static_assert(DetID == o2::detectors::DetID::TRK || DetID == o2::detectors::DetID::FT3, "only TRK and FT3 clusterers are supported");
+  using GeometryTGeo = std::conditional_t<DetID == o2::detectors::DetID::TRK, o2::trk::GeometryTGeo, o2::ft3::GeometryTGeo>;
 
  public:
   static constexpr int MaxLabels = 10;

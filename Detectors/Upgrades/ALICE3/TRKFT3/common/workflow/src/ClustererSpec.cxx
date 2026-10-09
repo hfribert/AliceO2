@@ -57,6 +57,7 @@ void ClustererDPL<DetID>::run(o2::framework::ProcessingContext& pc)
 
     std::vector<o2::trkft3::Cluster<DetID>> clusters;
     std::vector<unsigned char> patterns;
+    std::vector<uint32_t> pixCharge; ///< per-pixel charge, cluster i owns the next clusters[i].size entries
     std::vector<o2::trkft3::ROFRecord> clusterROFs;
     std::unique_ptr<o2::dataformats::MCTruthContainer<o2::MCCompLabel>> clusterLabels;
     if (mUseMC) {
@@ -71,6 +72,7 @@ void ClustererDPL<DetID>::run(o2::framework::ProcessingContext& pc)
                                rofs,
                                clusters,
                                patterns,
+                               pixCharge,
                                clusterROFs,
                                mUseMC ? &labels : nullptr,
                                clusterLabels.get());
@@ -80,6 +82,7 @@ void ClustererDPL<DetID>::run(o2::framework::ProcessingContext& pc)
                            rofs,
                            clusters,
                            patterns,
+                           pixCharge,
                            clusterROFs,
                            mUseMC ? &labels : nullptr,
                            clusterLabels.get());
@@ -92,6 +95,7 @@ void ClustererDPL<DetID>::run(o2::framework::ProcessingContext& pc)
                          rofs,
                          clusters,
                          patterns,
+                         pixCharge,
                          clusterROFs,
                          mUseMC ? &labels : nullptr,
                          clusterLabels.get());
@@ -100,6 +104,7 @@ void ClustererDPL<DetID>::run(o2::framework::ProcessingContext& pc)
     const auto subspec = static_cast<o2::framework::DataAllocator::SubSpecificationType>(iLayer);
     pc.outputs().snapshot(o2::framework::Output{Origin, "COMPCLUSTERS", subspec}, clusters);
     pc.outputs().snapshot(o2::framework::Output{Origin, "PATTERNS", subspec}, patterns);
+    pc.outputs().snapshot(o2::framework::Output{Origin, "PIXCHARGE", subspec}, pixCharge);
     pc.outputs().snapshot(o2::framework::Output{Origin, "CLUSTERSROF", subspec}, clusterROFs);
     if (mUseMC) {
       pc.outputs().snapshot(o2::framework::Output{Origin, "CLUSTERSMCTR", subspec}, *clusterLabels);
@@ -134,6 +139,7 @@ o2::framework::DataProcessorSpec getClustererSpecT(bool useMC)
   for (int iLayer = 0; iLayer < nLayers; ++iLayer) {
     outputs.emplace_back(Origin, "COMPCLUSTERS", iLayer, o2::framework::Lifetime::Timeframe);
     outputs.emplace_back(Origin, "PATTERNS", iLayer, o2::framework::Lifetime::Timeframe);
+    outputs.emplace_back(Origin, "PIXCHARGE", iLayer, o2::framework::Lifetime::Timeframe);
     outputs.emplace_back(Origin, "CLUSTERSROF", iLayer, o2::framework::Lifetime::Timeframe);
     if (useMC) {
       outputs.emplace_back(Origin, "CLUSTERSMCTR", iLayer, o2::framework::Lifetime::Timeframe);

@@ -33,6 +33,7 @@ class ClustererACTS : public TRKClusterer
                gsl::span<const DigROFRecord> digitROFs,
                std::vector<o2::trkft3::TRKCluster>& clusters,
                std::vector<unsigned char>& patterns,
+               std::vector<uint32_t>& pixCharge,
                std::vector<o2::trkft3::ROFRecord>& clusterROFs,
                const ConstDigitTruth* digitLabels = nullptr,
                ClusterTruth* clusterLabels = nullptr) override;

@@ -38,6 +38,7 @@ namespace o2::trk
 template <typename T>
 using BranchDefinition = MakeRootTreeWriterSpec::BranchDefinition<T>;
 using PatternsType = std::vector<unsigned char>;
+using PixChargeType = std::vector<uint32_t>;
 using ROFrameType = std::vector<o2::trkft3::ROFRecord>;
 using LabelsType = o2::dataformats::MCTruthContainer<o2::MCCompLabel>;
 
@@ -71,14 +72,16 @@ DataProcessorSpec getClusterWriterSpecT(bool useMC)
   auto detNameLC = detName;
   std::transform(detNameLC.begin(), detNameLC.end(), detNameLC.begin(), [](unsigned char c) { return std::tolower(c); });
 
-  std::vector<InputSpec> vecInpSpecClus, vecInpSpecPatt, vecInpSpecROF, vecInpSpecLbl;
+  std::vector<InputSpec> vecInpSpecClus, vecInpSpecPatt, vecInpSpecROF, vecInpSpecLbl, vecInpSpecPixCharge;
   vecInpSpecClus.reserve(nLayers);
   vecInpSpecPatt.reserve(nLayers);
+  vecInpSpecPixCharge.reserve(nLayers);
   vecInpSpecROF.reserve(nLayers);
   vecInpSpecLbl.reserve(nLayers);
   for (int iLayer = 0; iLayer < nLayers; iLayer++) {
     vecInpSpecClus.emplace_back(getName(detName + "compclus", iLayer), Origin, "COMPCLUSTERS", iLayer);
     vecInpSpecPatt.emplace_back(getName(detName + "patterns", iLayer), Origin, "PATTERNS", iLayer);
+    vecInpSpecPixCharge.emplace_back(getName(detName + "pixcharge", iLayer), Origin, "PIXCHARGE", iLayer);
     vecInpSpecROF.emplace_back(getName(detName + "ROframes", iLayer), Origin, "CLUSTERSROF", iLayer);
     vecInpSpecLbl.emplace_back(getName(detName + "labels", iLayer), Origin, "CLUSTERSMCTR", iLayer);
   }
@@ -97,6 +100,11 @@ DataProcessorSpec getClusterWriterSpecT(bool useMC)
                                                                nLayers,
                                                                getIndex,
                                                                getName},
+                                BranchDefinition<PixChargeType>{vecInpSpecPixCharge,
+                                                                detName + "ClusterPixCharge", "cluster-pixcharge-branch",
+                                                                nLayers,
+                                                                getIndex,
+                                                                getName},
                                 BranchDefinition<ROFrameType>{vecInpSpecROF,
                                                               detName + "ClustersROF", "cluster-rof-branch",
                                                               nLayers,

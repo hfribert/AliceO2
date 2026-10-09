@@ -160,6 +160,7 @@ void ClustererACTS::process(gsl::span<const Digit> digits,
                             gsl::span<const DigROFRecord> digitROFs,
                             std::vector<o2::trkft3::TRKCluster>& clusters,
                             std::vector<unsigned char>& patterns,
+                            std::vector<uint32_t>& pixCharge,
                             std::vector<o2::trkft3::ROFRecord>& clusterROFs,
                             const ConstDigitTruth* digitLabels,
                             ClusterTruth* clusterLabels)
@@ -306,6 +307,28 @@ void ClustererACTS::process(gsl::span<const Digit> digits,
               const int nBytes = (tileRowSpan * tileColSpan + 7) / 8;
               patterns.insert(patterns.end(), patt.begin(), patt.begin() + nBytes);
 
+              // per-pixel charges in pattern bit order
+              {
+                std::vector<std::pair<int, uint32_t>> ordered;
+                ordered.reserve(tileCells.size());
+                for (const auto& [r, c] : tileCells) {
+                  uint32_t q = 0u;
+                  for (const auto& cell : actsCluster.cells) {
+                    if (static_cast<uint16_t>(cell.row) == r && static_cast<uint16_t>(cell.col) == c) {
+                      q = (cell.digitIdx < digits.size()) ? digits[cell.digitIdx].getCharge() : 0u;
+                      break;
+                    }
+                  }
+                  const uint32_t ir = r - tileRowMin, ic = c - tileColMin;
+                  ordered.emplace_back(static_cast<int>(ir * tileColSpan + ic), q);
+                }
+                std::sort(ordered.begin(), ordered.end(),
+                          [](const auto& a, const auto& b) { return a.first < b.first; });
+                for (const auto& [nbit, q] : ordered) {
+                  pixCharge.push_back(q);
+                }
+              }
+
               // Handle MC labels for this tile
               if (clusterLabels && digitLabels) {
                 const auto clsIdx = static_cast<uint32_t>(clusters.size());
@@ -349,6 +372,23 @@ void ClustererACTS::process(gsl::span<const Digit> digits,
           patterns.emplace_back(static_cast<unsigned char>(colSpan));
           const int nBytes = (rowSpan * colSpan + 7) / 8;
           patterns.insert(patterns.end(), patt.begin(), patt.begin() + nBytes);
+
+          // per-pixel charges in pattern bit order
+          {
+            std::vector<std::pair<int, uint32_t>> ordered;
+            ordered.reserve(actsCluster.cells.size());
+            for (const auto& cell : actsCluster.cells) {
+              const uint32_t ir = static_cast<uint32_t>(cell.row - rowMin);
+              const uint32_t ic = static_cast<uint32_t>(cell.col - colMin);
+              const uint32_t q = (cell.digitIdx < digits.size()) ? digits[cell.digitIdx].getCharge() : 0u;
+              ordered.emplace_back(static_cast<int>(ir * colSpan + ic), q);
+            }
+            std::sort(ordered.begin(), ordered.end(),
+                      [](const auto& a, const auto& b) { return a.first < b.first; });
+            for (const auto& [nbit, q] : ordered) {
+              pixCharge.push_back(q);
+            }
+          }
 
           // Handle MC labels
           if (clusterLabels && digitLabels) {

@@ -74,6 +74,7 @@ void Clusterer<DetID>::process(gsl::span<const Digit> digits,
                                gsl::span<const DigROFRecord> digitROFs,
                                std::vector<ClusterType>& clusters,
                                std::vector<unsigned char>& patterns,
+                               std::vector<uint32_t>& pixCharge,
                                std::vector<o2::trkft3::ROFRecord>& clusterROFs,
                                const ConstDigitTruth* digitLabels,
                                ClusterTruth* clusterLabels)
@@ -121,7 +122,7 @@ void Clusterer<DetID>::process(gsl::span<const Digit> digits,
       }
       const int chipN = sliceStart - chipFirst;
 
-      mThread->processChip(digits, chipFirst, chipN, &clusters, &patterns, digitLabels, clusterLabels, geom);
+      mThread->processChip(digits, chipFirst, chipN, &clusters, &patterns, &pixCharge, digitLabels, clusterLabels, geom);
     }
 
     clusterROFs.emplace_back(inROF.getBCData(), inROF.getROFrame(),
@@ -135,6 +136,7 @@ void Clusterer<DetID>::ClustererThread::processChip(gsl::span<const Digit> digit
                                                     int chipFirst, int chipN,
                                                     std::vector<ClusterType>* clustersOut,
                                                     std::vector<unsigned char>* patternsOut,
+                                                    std::vector<uint32_t>* pixChargeOut,
                                                     const ConstDigitTruth* labelsDigPtr,
                                                     ClusterTruth* labelsClusPtr,
                                                     GeometryTGeo* geom)
@@ -162,6 +164,10 @@ void Clusterer<DetID>::ClustererThread::processChip(gsl::span<const Digit> digit
   if (!patterns.empty()) {
     patternsOut->insert(patternsOut->end(), patterns.begin(), patterns.end());
     patterns.clear();
+  }
+  if (pixChargeOut && !pixCharge.empty()) {
+    pixChargeOut->insert(pixChargeOut->end(), pixCharge.begin(), pixCharge.end());
+    pixCharge.clear();
   }
   if (labelsClusPtr && labels.getNElements()) {
     labelsClusPtr->mergeAtBack(labels);
@@ -289,7 +295,7 @@ void Clusterer<DetID>::ClustererThread::finishChip(gsl::span<const Digit> digits
         const auto& pixEntry = pixels[next];
         const auto& d = digits[pixEntry.second];
         uint16_t r = d.getRow(), c = d.getColumn();
-        pixArrBuff.emplace_back(r, c);
+        pixArrBuff.push_back({r, c, d.getCharge()});
         bbox.adjust(r, c);
         totalCharge += d.getCharge();
         if (labelsClusPtr) {
@@ -336,11 +342,11 @@ void Clusterer<DetID>::ClustererThread::finishChip(gsl::span<const Digit> digits
         bboxT.colMax = std::min(bbox.colMax, uint16_t(bboxT.colMin + o2::itsmft::ClusterPattern::MaxColSpan - 1));
         do {
           bboxT.rowMax = std::min(bbox.rowMax, uint16_t(bboxT.rowMin + o2::itsmft::ClusterPattern::MaxRowSpan - 1));
-          std::vector<std::pair<uint16_t, uint16_t>> subPix;
+          std::vector<PixInfo> subPix;
           uint32_t subCharge = 0;
-          for (const auto& [r, c] : pixArrBuff) {
-            if (bboxT.isInside(r, c)) {
-              subPix.emplace_back(r, c);
+          for (const auto& p : pixArrBuff) {
+            if (bboxT.isInside(p.row, p.col)) {
+              subPix.push_back(p);
               subCharge += 1;
             }
           }
@@ -392,12 +398,13 @@ void Clusterer<DetID>::ClustererThread::finishChipSingleHitFast(gsl::span<const 
     cluster.layer = geom->getLayer(chipID);
   }
   clusters.emplace_back(cluster);
+  pixCharge.push_back(d.getCharge());
 }
 
 //__________________________________________________
 template <int DetID>
 void Clusterer<DetID>::ClustererThread::streamCluster(const BBox& bbox,
-                                                      const std::vector<std::pair<uint16_t, uint16_t>>& pixbuf,
+                                                      const std::vector<PixInfo>& pixbuf,
                                                       uint32_t totalCharge,
                                                       bool doLabels, int nlab,
                                                       uint16_t chipID, int subDetID, int layer)
@@ -414,15 +421,25 @@ void Clusterer<DetID>::ClustererThread::streamCluster(const BBox& bbox,
 
   // Encode the pixel pattern bitmap (rowSpan, colSpan, bytes...)
   std::array<unsigned char, o2::itsmft::ClusterPattern::MaxPatternBytes> patt{};
-  for (const auto& [r, c] : pixbuf) {
-    uint32_t ir = r - bbox.rowMin, ic = c - bbox.colMin;
+  std::vector<std::pair<int, uint32_t>> ordered;
+  ordered.reserve(pixbuf.size());
+  for (const auto& p : pixbuf) {
+    uint32_t ir = p.row - bbox.rowMin, ic = p.col - bbox.colMin;
     int nbit = ir * colSpanW + ic;
     patt[nbit >> 3] |= (0x1 << (7 - (nbit % 8)));
+    ordered.emplace_back(nbit, p.charge);
   }
   patterns.emplace_back(static_cast<unsigned char>(rowSpanW));
   patterns.emplace_back(static_cast<unsigned char>(colSpanW));
   int nBytes = (rowSpanW * colSpanW + 7) / 8;
   patterns.insert(patterns.end(), patt.begin(), patt.begin() + nBytes);
+
+  // per-pixel charges in pattern bit order
+  std::sort(ordered.begin(), ordered.end(),
+            [](const auto& a, const auto& b) { return a.first < b.first; });
+  for (const auto& [nbit, q] : ordered) {
+    pixCharge.push_back(q);
+  }
 
   ClusterType cluster;
   cluster.chipID = chipID;

@@ -107,12 +107,19 @@ class Clusterer
     uint16_t currCol = 0xffff;
     bool noLeftCol = true;
 
-    std::array<Label, MaxLabels> labelsBuff;               ///< MC label buffer for one cluster
-    std::vector<std::pair<uint16_t, uint16_t>> pixArrBuff; ///< (row,col) pixel buffer for pattern
+    struct PixInfo {
+      uint16_t row;
+      uint16_t col;
+      uint32_t charge; ///< collected charge [electrons]
+    };
+
+    std::array<Label, MaxLabels> labelsBuff; ///< MC label buffer for one cluster
+    std::vector<PixInfo> pixArrBuff;         ///< pixel buffer for pattern
 
     // per-thread output (accumulated, then merged back by caller)
     std::vector<ClusterType> clusters;
     std::vector<unsigned char> patterns;
+    std::vector<uint32_t> pixCharge; ///< per-pixel charge, in pattern bit order
     ClusterTruth labels;
 
     ///< reset column buffer
@@ -150,9 +157,10 @@ class Clusterer
                                  GeometryTGeo* geom);
     void processChip(gsl::span<const Digit> digits, int chipFirst, int chipN,
                      std::vector<ClusterType>* clustersOut, std::vector<unsigned char>* patternsOut,
+                     std::vector<uint32_t>* pixChargeOut,
                      const ConstDigitTruth* labelsDigPtr, ClusterTruth* labelsClusPtr,
                      GeometryTGeo* geom);
-    void streamCluster(const BBox& bbox, const std::vector<std::pair<uint16_t, uint16_t>>& pixbuf,
+    void streamCluster(const BBox& bbox, const std::vector<PixInfo>& pixbuf,
                        uint32_t totalCharge, bool doLabels, int nlab,
                        uint16_t chipID, int subDetID, int layer);
 
@@ -171,6 +179,7 @@ class Clusterer
                        gsl::span<const DigROFRecord> digitROFs,
                        std::vector<ClusterType>& clusters,
                        std::vector<unsigned char>& patterns,
+                       std::vector<uint32_t>& pixCharge,
                        std::vector<o2::trkft3::ROFRecord>& clusterROFs,
                        const ConstDigitTruth* digitLabels = nullptr,
                        ClusterTruth* clusterLabels = nullptr);

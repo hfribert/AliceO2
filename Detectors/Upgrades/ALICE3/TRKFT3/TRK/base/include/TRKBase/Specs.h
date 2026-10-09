@@ -216,8 +216,8 @@ constexpr double thickness{45 * mu};
 
 namespace alice3resp /// parameters for the alice3 chip response
 {
-constexpr double pitchX{10.0 * mu};
-constexpr double pitchZ{10.0 * mu};
+constexpr double pitchX{20.0 * mu};
+constexpr double pitchZ{20.0 * mu};
 constexpr double responseYShift{5 * mu}; /// center of the epitaxial layer
 constexpr double thickness{20 * mu};
 } // namespace alice3resp
